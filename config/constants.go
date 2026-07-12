@@ -49,6 +49,7 @@ func defaultKeyBindings() map[string]string {
 		"sectionDelete": "d",
 		"sectionCopy":   "c",
 		"sectionImport": "i",
+		"sectionMask":   "m",
 	}
 }
 

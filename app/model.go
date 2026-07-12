@@ -57,6 +57,7 @@ type item struct {
 	pinned          bool   // pinned status
 	selected        bool   // selected status
 	isAction        bool   // synthetic row that performs an action, not a data row
+	masked          bool   // section item whose value is hidden behind its label
 }
 
 type SelectedItem struct {

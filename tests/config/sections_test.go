@@ -171,6 +171,61 @@ func TestDuplicateValuesAllowedWithinSection(t *testing.T) {
 	}
 }
 
+func TestMaskSectionItem(t *testing.T) {
+	setup(t)
+	if err := config.AddSection("Creds"); err != nil {
+		t.Fatalf("AddSection: %v", err)
+	}
+	if err := config.AddSectionItem("Creds", "hunter2"); err != nil {
+		t.Fatalf("AddSectionItem: %v", err)
+	}
+
+	ts := config.GetSectionItems("Creds")[0].Added
+	if err := config.MaskSectionItem("Creds", ts, "Entra PW"); err != nil {
+		t.Fatalf("MaskSectionItem: %v", err)
+	}
+
+	got := config.GetSectionItems("Creds")[0]
+	if !got.Masked {
+		t.Fatal("item should be masked")
+	}
+	if got.Label != "Entra PW" {
+		t.Fatalf("label = %q", got.Label)
+	}
+	// the whole point: the real value is still stored, so copying works
+	if got.Value != "hunter2" {
+		t.Fatalf("masking must not alter the stored value, got %q", got.Value)
+	}
+}
+
+func TestMaskRequiresLabel(t *testing.T) {
+	setup(t)
+	if err := config.AddSection("Creds"); err != nil {
+		t.Fatalf("AddSection: %v", err)
+	}
+	if err := config.AddSectionItem("Creds", "hunter2"); err != nil {
+		t.Fatalf("AddSectionItem: %v", err)
+	}
+
+	ts := config.GetSectionItems("Creds")[0].Added
+	if err := config.MaskSectionItem("Creds", ts, "  "); err == nil {
+		t.Fatal("expected error: a masked item with no label would be unidentifiable")
+	}
+	if config.GetSectionItems("Creds")[0].Masked {
+		t.Fatal("item should not have been masked")
+	}
+}
+
+func TestMaskUnknownItem(t *testing.T) {
+	setup(t)
+	if err := config.AddSection("Creds"); err != nil {
+		t.Fatalf("AddSection: %v", err)
+	}
+	if err := config.MaskSectionItem("Creds", "no-such-timestamp", "X"); err == nil {
+		t.Fatal("expected error for unknown item")
+	}
+}
+
 func TestSectionsAreIndependentOfEachOther(t *testing.T) {
 	setup(t)
 	for _, name := range []string{"A", "B"} {

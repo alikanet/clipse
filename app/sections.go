@@ -34,6 +34,8 @@ const (
 	stateImport                             // picking history entries to import
 	stateConfirmDelete                      // confirming a section deletion
 	statePickTarget                         // choosing which section to add history items to
+	stateLabelInput                         // naming an item that is being masked
+	statePreview                            // revealing a masked item's value
 )
 
 // what the confirmation screen is currently asking about
@@ -53,6 +55,8 @@ type sectionsKeyMap struct {
 	back         key.Binding
 	selectSingle key.Binding
 	togglePinned key.Binding
+	mask         key.Binding
+	preview      key.Binding
 }
 
 func newSectionsKeyMap(c map[string]string) *sectionsKeyMap {
@@ -88,6 +92,14 @@ func newSectionsKeyMap(c map[string]string) *sectionsKeyMap {
 		togglePinned: key.NewBinding(
 			key.WithKeys(parseKeys(c["togglePinned"])...),
 			key.WithHelp(getHelpChar(c["togglePinned"]), "pinned only"),
+		),
+		mask: key.NewBinding(
+			key.WithKeys(parseKeys(c["sectionMask"])...),
+			key.WithHelp(getHelpChar(c["sectionMask"]), "mask"),
+		),
+		preview: key.NewBinding(
+			key.WithKeys(parseKeys(c["preview"])...),
+			key.WithHelp(getHelpChar(c["preview"]), "reveal"),
 		),
 	}
 }
@@ -176,19 +188,39 @@ func sectionListItems() []list.Item {
 func sectionItemListItems(sectionName string) []list.Item {
 	items := []list.Item{}
 	for _, si := range config.GetSectionItems(sectionName) {
-		shortened := utils.Shorten(si.Value, config.ClipseConfig.MaxEntryLength)
+		title := utils.Shorten(si.Value, config.ClipseConfig.MaxEntryLength)
 		desc := "Date added: " + si.Added
+
+		if si.Masked {
+			// the label is all that is shown, and all that the filter can match,
+			// so the secret is neither visible nor searchable. titleFull still
+			// holds the real value: copying is unaffected.
+			title = si.Label
+			desc = maskOf(si.Value)
+		}
+
 		items = append(items, item{
-			title:           shortened,
-			titleBase:       shortened,
+			title:           title,
+			titleBase:       title,
 			titleFull:       si.Value,
 			description:     desc,
 			descriptionBase: desc,
 			timeStamp:       si.Added,
 			filePath:        "null",
+			masked:          si.Masked,
 		})
 	}
 	return items
+}
+
+// maskOf renders a value as asterisks, one per character, capped so a long
+// secret does not blow out the row.
+func maskOf(value string) string {
+	n := len([]rune(value))
+	if n > maskMaxChars {
+		n = maskMaxChars
+	}
+	return strings.Repeat(maskChar, n)
 }
 
 // pickTargetItems lists the sections to file into, with a row for creating one
@@ -282,7 +314,7 @@ func (m sectionsModel) Update(msg tea.Msg) (sectionsModel, tea.Cmd, bool) {
 
 	case tea.KeyMsg:
 		switch m.state {
-		case stateNameInput, stateValueInput:
+		case stateNameInput, stateValueInput, stateLabelInput:
 			return m.updateInput(msg)
 		case stateConfirmDelete:
 			return m.updateConfirm(msg)
@@ -290,6 +322,8 @@ func (m sectionsModel) Update(msg tea.Msg) (sectionsModel, tea.Cmd, bool) {
 			return m.updateImport(msg)
 		case statePickTarget:
 			return m.updatePickTarget(msg)
+		case statePreview:
+			return m.updatePreview(msg)
 		case stateItemList:
 			return m.updateItemList(msg)
 		default:
@@ -375,6 +409,14 @@ func (m sectionsModel) updateSectionList(msg tea.KeyMsg) (sectionsModel, tea.Cmd
 	var cmd tea.Cmd
 	m.list, cmd = m.list.Update(msg)
 	return m, cmd, false
+}
+
+// updatePreview shows an item's real value. Any key returns to the list, where a
+// masked item is masked again -- the value is only ever on screen while this
+// view is open.
+func (m sectionsModel) updatePreview(_ tea.KeyMsg) (sectionsModel, tea.Cmd, bool) {
+	m.state = stateItemList
+	return m, nil, false
 }
 
 // updatePickTarget handles the "which section should these go in?" screen, shown
@@ -484,6 +526,22 @@ func (m sectionsModel) updateItemList(msg tea.KeyMsg) (sectionsModel, tea.Cmd, b
 		return m, m.list.NewStatusMessage(
 			statusMessageStyle("Copied to clipboard: " + i.title),
 		), false
+
+	case key.Matches(msg, m.keys.mask):
+		if i.masked {
+			return m, m.list.NewStatusMessage(
+				statusMessageStyle("Already masked"),
+			), false
+		}
+		m.state = stateLabelInput
+		m.input.Reset()
+		m.input.Placeholder = "e.g. Entra PW"
+		m.input.Focus()
+		return m, textinput.Blink, false
+
+	case key.Matches(msg, m.keys.preview):
+		m.state = statePreview
+		return m, nil, false
 
 	case key.Matches(msg, m.keys.remove):
 		// a saved item was put here deliberately, so confirm before removing it
@@ -685,6 +743,26 @@ func (m sectionsModel) updateInput(msg tea.KeyMsg) (sectionsModel, tea.Cmd, bool
 		value := m.input.Value()
 		m.input.Blur()
 
+		if m.state == stateLabelInput {
+			i, ok := m.list.SelectedItem().(item)
+			if !ok {
+				m.state = stateItemList
+				return m, nil, false
+			}
+
+			if err := config.MaskSectionItem(m.current, i.timeStamp, value); err != nil {
+				m.state = stateItemList
+				m = m.refresh()
+				return m, m.list.NewStatusMessage(statusMessageStyle(err.Error())), false
+			}
+
+			m.state = stateItemList
+			m = m.refresh()
+			return m, m.list.NewStatusMessage(
+				statusMessageStyle("Masked: " + strings.TrimSpace(value)),
+			), false
+		}
+
 		if m.state == stateNameInput {
 			if err := config.AddSection(value); err != nil {
 				if m.pickMode { // let the user correct a bad or duplicate name
@@ -753,10 +831,31 @@ func (m sectionsModel) View() string {
 
 	switch m.state {
 
-	case stateNameInput, stateValueInput:
+	case statePreview:
+		i, ok := m.list.SelectedItem().(item)
+		if !ok {
+			return render(m.list.View())
+		}
+		title := i.title
+		if !i.masked {
+			title = previewHeader
+		}
+		return render(fmt.Sprintf(
+			"\n  %s\n\n  %s\n\n%s",
+			style.Foreground(lipgloss.Color(m.theme.TitleFore)).Render(title),
+			style.Foreground(lipgloss.Color(m.theme.PreviewedText)).Render(i.titleFull),
+			helpView([]key.Binding{
+				key.NewBinding(key.WithKeys("any"), key.WithHelp("any key", "hide")),
+			}),
+		))
+
+	case stateNameInput, stateValueInput, stateLabelInput:
 		prompt := sectionNamePrompt
-		if m.state == stateValueInput {
+		switch m.state {
+		case stateValueInput:
 			prompt = sectionValuePrompt
+		case stateLabelInput:
+			prompt = sectionLabelPrompt
 		}
 		return render(fmt.Sprintf(
 			"\n  %s\n\n  %s\n\n%s",
@@ -806,7 +905,8 @@ func (m sectionsModel) View() string {
 			return render(m.list.View())
 		}
 		return render(m.list.View() + "\n" + helpView([]key.Binding{
-			m.keys.choose, m.keys.copy, m.keys.add, m.keys.importItem, m.keys.remove, m.keys.back,
+			m.keys.choose, m.keys.copy, m.keys.add, m.keys.importItem,
+			m.keys.mask, m.keys.preview, m.keys.remove, m.keys.back,
 		}))
 
 	default:

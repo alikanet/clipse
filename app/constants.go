@@ -23,4 +23,7 @@ const (
 	newSectionRow      = "+ New section"
 	sectionNamePrompt  = "New section name:"
 	sectionValuePrompt = "New item value:"
+	sectionLabelPrompt = "Label for the masked item:"
+	maskChar           = "*"
+	maskMaxChars       = 24
 )

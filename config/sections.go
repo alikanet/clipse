@@ -21,8 +21,10 @@ them, so a linked item would die with it.
 */
 
 type SectionItem struct {
-	Value string `json:"value"`
-	Added string `json:"added"` // timestamp, doubles as the item ID
+	Value  string `json:"value"`
+	Added  string `json:"added"`            // timestamp, doubles as the item ID
+	Label  string `json:"label,omitempty"`  // shown in place of the value when masked
+	Masked bool   `json:"masked,omitempty"` // hide the value on screen; copying is unaffected
 }
 
 type Section struct {
@@ -162,6 +164,35 @@ func AddSectionItem(sectionName, value string) error {
 		)
 
 		return writeSections(data)
+	}
+
+	return fmt.Errorf("section %q does not exist", sectionName)
+}
+
+// MaskSectionItem hides an item's value behind a label. One-way by design: a
+// value saved as a secret should not be revealable from the list with a single
+// keypress. The stored value is untouched, so copying still yields the real
+// thing.
+func MaskSectionItem(sectionName, timeStamp, label string) error {
+	label = strings.TrimSpace(label)
+	if label == "" {
+		return fmt.Errorf("a masked item needs a label")
+	}
+
+	data := readSections()
+	for i, s := range data.Sections {
+		if s.Name != sectionName {
+			continue
+		}
+		for j, item := range s.Items {
+			if item.Added != timeStamp {
+				continue
+			}
+			data.Sections[i].Items[j].Label = label
+			data.Sections[i].Items[j].Masked = true
+			return writeSections(data)
+		}
+		return fmt.Errorf("item not found in section %q", sectionName)
 	}
 
 	return fmt.Errorf("section %q does not exist", sectionName)
