@@ -15,6 +15,7 @@
 - [Features](#features)
 - [Installation & Set-up](#Installation-&-Set-up)
 - [Configuration](#configuration)
+- [Sections](#sections)
 - [All commands](#all-commands-)
 - [Contributing](#contributing-)
 - [FAQs](#faq)
@@ -372,6 +373,11 @@ Absolute paths starting with `/`, paths relative to the user home dir using `~`,
 | `keyBindings.preview`       | string | Toggles preview of the selected entry.      |
 | `keyBindings.quit`          | string | Exits the application gracefully.           |
 | `keyBindings.remove`        | string | Deletes the selected entry.                 |
+| `keyBindings.sectionAdd`    | string | Adds a section, or an item to a section.    |
+| `keyBindings.sectionCopy`   | string | Copies a whole section, or a section item.  |
+| `keyBindings.sectionDelete` | string | Deletes a section, or a section item.       |
+| `keyBindings.sectionImport` | string | Imports history entries into a section.     |
+| `keyBindings.sections`      | string | Opens the sections screen.                  |
 | `keyBindings.selectDown`    | string | Extends selection downward.                 |
 | `keyBindings.selectSingle`  | string | Selects a single entry.                     |
 | `keyBindings.selectUp`      | string | Extends selection upward.                   |
@@ -391,6 +397,40 @@ For example:
     }
 }
 ```
+
+## Sections
+
+Sections are a user-curated store of saved text snippets, grouped under names you
+choose. They are separate from the clipboard history: nothing is ever added to a
+section unless you ask, and nothing is ever evicted from one. `maxHistory`
+trimming, `deleteAfter` expiry and the `-clear` commands do not touch them.
+
+Press `W` from the clipboard history to open the sections screen.
+
+| Screen       | Key     | Action                                                        |
+| ------------ | ------- | ------------------------------------------------------------- |
+| Sections     | `a`     | Create a section, then drop straight into it.                 |
+| Sections     | `enter` | Open the section.                                             |
+| Sections     | `c`     | Copy the whole section — every item, joined by newlines.      |
+| Sections     | `d`     | Delete the section and its items (asks for confirmation).     |
+| Sections     | `esc`   | Back to the clipboard history.                                |
+| In a section | `a`     | Add an item by typing its value.                              |
+| In a section | `i`     | Import from the clipboard history (see below).                |
+| In a section | `enter` | Copy the item and exit, so auto-paste fires as usual.         |
+| In a section | `c`     | Copy the item and stay, to grab several without relaunching.  |
+| In a section | `d`     | Delete the item.                                              |
+| In a section | `esc`   | Back to the sections list.                                    |
+
+The import picker (`i`) shows your **full** clipboard history. Use `/` to filter it
+and `tab` to narrow it to pinned entries only, and `s` to select several entries at
+once. Imported entries are **snapshots**: the value is copied into the section, with
+no link back to the history entry, so the item survives when the history later evicts
+its source.
+
+Sections hold text only; image entries are skipped on import.
+
+Sections are stored in `sections.json` alongside `clipboard_history.json`, and are
+written only by the TUI — never by the background listener.
 
 ## Image Display
 

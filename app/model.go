@@ -15,7 +15,18 @@ import (
 	"github.com/savedra1/clipse/utils"
 )
 
+// which top-level screen the TUI is on. The sections screen delegates wholly to
+// a self-contained sub-model, so its states never mix with the history screen's.
+type screen int
+
+const (
+	screenHistory screen = iota
+	screenSections
+)
+
 type Model struct {
+	screen           screen              // active top-level screen
+	sections         sectionsModel       // self-contained sections screen
 	list             list.Model          // list items
 	keys             *keyMap             // keybindings
 	filterKeys       *filterKeyMap       // keybindings for filter view
@@ -76,6 +87,8 @@ func NewModel() Model {
 	clipboardItems := config.GetHistory()
 
 	m := Model{
+		screen:           screenHistory,
+		sections:         newSectionsModel(ClipseTheme),
 		keys:             listKeys,
 		filterKeys:       filterKeys,
 		confirmationKeys: confirmationKeys,

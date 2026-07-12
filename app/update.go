@@ -25,6 +25,32 @@ var KeepEnabled = keepEnabled()
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// The sections screen is a self-contained sub-model. While it is active it
+	// owns every message, so none of the history-screen handling below can fire.
+	// WindowSizeMsg is the exception: it must reach both, or whichever screen is
+	// inactive at resize time renders at the wrong size when next opened.
+	if m.screen == screenSections {
+		if sizeMsg, ok := msg.(tea.WindowSizeMsg); ok {
+			h, v := appStyle.GetFrameSize()
+			m.list.SetSize(sizeMsg.Width-h, sizeMsg.Height-v)
+			m.confirmationList.SetSize(sizeMsg.Width-h, sizeMsg.Height-v)
+		}
+
+		updated, cmd, back := m.sections.Update(msg)
+		m.sections = updated
+
+		if m.sections.exit { // copied an item and asked to exit
+			m.ExitCode = 0
+			return m, tea.Quit
+		}
+
+		if back {
+			m.screen = screenHistory
+		}
+
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case ReRender:
 		clipboardItems := config.GetHistory()
@@ -35,6 +61,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		h, v := appStyle.GetFrameSize()
 		m.list.SetSize(msg.Width-h, msg.Height-v)
 		m.confirmationList.SetSize(msg.Width-h, msg.Height-v)
+		m.sections.setSize(msg.Width, msg.Height)
 
 		headerHeight := lipgloss.Height(m.previewHeaderView())
 		footerHeight := lipgloss.Height(m.previewFooterView())
@@ -96,6 +123,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		i, ok := m.list.SelectedItem().(item)
 		if !ok { // no keys in current list; handle available options
 			switch {
+			// reachable with an empty history: sections are a separate store
+			case key.Matches(msg, m.keys.sections):
+				return m.openSections()
+
 			case key.Matches(msg, m.keys.more):
 				m.list.SetShowHelp(!m.list.ShowHelp())
 				m.updatePaginator()
@@ -123,6 +154,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
+
+		case key.Matches(msg, m.keys.sections):
+			if m.showConfirmation || m.showPreview {
+				break // don't jump screens out of a modal state
+			}
+			return m.openSections()
 
 		case key.Matches(msg, m.keys.choose):
 			if m.showConfirmation {
@@ -427,6 +464,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 /*
 	HELPER FUNCS
 */
+
+// openSections switches to the sections screen. The history list's filter is
+// reset first, so returning later does not land on a filtered view the user has
+// forgotten about. Everything else about the history screen is left intact.
+func (m Model) openSections() (tea.Model, tea.Cmd) {
+	m.list.ResetFilter()
+	m.resetSelected()
+
+	m.screen = screenSections
+	m.sections.state = stateSectionList
+	m.sections.current = ""
+	m.sections = m.sections.refresh()
+	m.sections.list.Select(0)
+
+	return m, nil
+}
 
 func (m *Model) togglePinUpdate() {
 	index := m.list.Index()

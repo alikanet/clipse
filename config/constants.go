@@ -12,6 +12,7 @@ const (
 	defaultMaxEntryLength    = 65
 	defaultTempDir           = "tmp_files"
 	defaultThemeFile         = "custom_theme.json"
+	defaultSectionsFile      = "sections.json"
 	defaultEnableAutoPaste   = false
 	defaultAutoPasteKeyBind  = "ctrl+v"
 	defaultAutoPasteBuffer   = 10
@@ -42,6 +43,11 @@ func defaultKeyBindings() map[string]string {
 		"prevPage":      "left",
 		"home":          "home",
 		"end":           "end",
+		"sections":      "W",
+		"sectionAdd":    "a",
+		"sectionDelete": "d",
+		"sectionCopy":   "c",
+		"sectionImport": "i",
 	}
 }
 
@@ -70,6 +76,7 @@ func defaultConfig() Config {
 		PollInterval:      defaultPollInterval,
 		MaxEntryLength:    defaultMaxEntryLength,
 		ThemeFilePath:     defaultThemeFile,
+		SectionsFilePath:  defaultSectionsFile,
 		KeyBindings:       defaultKeyBindings(),
 		ExcludedApps:      defaultExcludedApps(),
 		EnableMouse:       defaultEnableMouse,

@@ -18,6 +18,7 @@ type Config struct {
 	PollInterval      int               `json:"pollInterval"`
 	MaxEntryLength    int               `json:"maxEntryLength"`
 	ThemeFilePath     string            `json:"themeFile"`
+	SectionsFilePath  string            `json:"sectionsFile"`
 	TempDirPath       string            `json:"tempDir"`
 	KeyBindings       map[string]string `json:"keyBindings"`
 	ImageDisplay      ImageDisplay      `json:"imageDisplay"`
@@ -70,6 +71,9 @@ func Init() error {
 	// The history path is absolute at this point. Create it if it does not exist
 	utils.HandleError(initHistoryFile())
 
+	// Same for the user-defined sections store
+	utils.HandleError(initSectionsFile())
+
 	// Create TempDir for images if it does not exist.
 	_, err = os.Stat(ClipseConfig.TempDirPath)
 	if os.IsNotExist(err) {
@@ -103,4 +107,5 @@ func loadConfig(configPath string) {
 	ClipseConfig.TempDirPath = utils.ExpandRel(utils.ExpandHome(ClipseConfig.TempDirPath), configDir)
 	ClipseConfig.ThemeFilePath = utils.ExpandRel(utils.ExpandHome(ClipseConfig.ThemeFilePath), configDir)
 	ClipseConfig.LogFilePath = utils.ExpandRel(utils.ExpandHome(ClipseConfig.LogFilePath), configDir)
+	ClipseConfig.SectionsFilePath = utils.ExpandRel(utils.ExpandHome(ClipseConfig.SectionsFilePath), configDir)
 }
