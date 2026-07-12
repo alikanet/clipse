@@ -16,4 +16,9 @@ const (
 	rightChar         = "→"
 	leftChar          = "←"
 	backspaceChar     = "⌫"
+
+	sectionsTitle      = "Sections"
+	sectionImportTitle = "Import from History"
+	sectionNamePrompt  = "New section name:"
+	sectionValuePrompt = "New item value:"
 )

@@ -8,6 +8,10 @@ import (
 )
 
 func (m Model) View() string {
+	if m.screen == screenSections {
+		return m.sections.View()
+	}
+
 	render := style.PaddingLeft(1).Render
 
 	listView := m.list.View()

@@ -29,6 +29,7 @@ type keyMap struct {
 	prevPage      key.Binding
 	home          key.Binding
 	end           key.Binding
+	sections      key.Binding
 }
 
 var charSub = map[string]string{
@@ -136,12 +137,16 @@ func newKeyMap(config map[string]string) *keyMap {
 		end: key.NewBinding(
 			key.WithKeys(parseKeys(config["end"])...),
 		),
+		sections: key.NewBinding(
+			key.WithKeys(parseKeys(config["sections"])...),
+			key.WithHelp(getHelpChar(config["sections"]), "sections"),
+		),
 	}
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
-		k.choose, k.remove, k.togglePin, k.togglePinned, k.more,
+		k.choose, k.remove, k.togglePin, k.togglePinned, k.sections, k.more,
 	}
 }
 
