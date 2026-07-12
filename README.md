@@ -405,7 +405,7 @@ choose. They are separate from the clipboard history: nothing is ever added to a
 section unless you ask, and nothing is ever evicted from one. `maxHistory`
 trimming, `deleteAfter` expiry and the `-clear` commands do not touch them.
 
-Press `W` from the clipboard history to open the sections screen.
+Press `w` from the clipboard history to open the sections screen.
 
 | Screen       | Key     | Action                                                        |
 | ------------ | ------- | ------------------------------------------------------------- |

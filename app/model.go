@@ -121,6 +121,7 @@ func NewModel() Model {
 			listKeys.selectUp,
 			listKeys.selectSingle,
 			listKeys.clearSelected,
+			listKeys.sections,
 			listKeys.quit,
 			listKeys.forceQuit,
 		}

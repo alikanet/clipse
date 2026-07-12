@@ -43,7 +43,7 @@ func defaultKeyBindings() map[string]string {
 		"prevPage":      "left",
 		"home":          "home",
 		"end":           "end",
-		"sections":      "W",
+		"sections":      "w",
 		"sectionAdd":    "a",
 		"sectionDelete": "d",
 		"sectionCopy":   "c",
