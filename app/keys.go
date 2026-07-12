@@ -151,7 +151,7 @@ func newKeyMap(config map[string]string) *keyMap {
 
 func (k keyMap) ShortHelp() []key.Binding {
 	return []key.Binding{
-		k.choose, k.remove, k.togglePin, k.togglePinned, k.sections, k.more,
+		k.choose, k.remove, k.togglePin, k.togglePinned, k.addToSection, k.sections, k.more,
 	}
 }
 
@@ -163,6 +163,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.choose, k.remove},
 		{k.togglePin, k.togglePinned},
 		{k.selectDown, k.selectUp, k.selectSingle, k.clearSelected},
+		{k.sections, k.addToSection},
 		{k.filter, k.quit, k.forceQuit},
 	}
 }
