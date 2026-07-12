@@ -44,6 +44,7 @@ func defaultKeyBindings() map[string]string {
 		"home":          "home",
 		"end":           "end",
 		"sections":      "w",
+		"addToSection":  "a",
 		"sectionAdd":    "a",
 		"sectionDelete": "d",
 		"sectionCopy":   "c",

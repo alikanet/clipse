@@ -19,6 +19,8 @@ const (
 
 	sectionsTitle      = "Sections"
 	sectionImportTitle = "Import from History"
+	pickTargetTitle    = "Add to which section?"
+	newSectionRow      = "+ New section"
 	sectionNamePrompt  = "New section name:"
 	sectionValuePrompt = "New item value:"
 )

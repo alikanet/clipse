@@ -33,6 +33,7 @@ const (
 	stateValueInput                         // typing a new item value
 	stateImport                             // picking history entries to import
 	stateConfirmDelete                      // confirming a section deletion
+	statePickTarget                         // choosing which section to add history items to
 )
 
 // what the confirmation screen is currently asking about
@@ -103,8 +104,15 @@ type sectionsModel struct {
 	confirmKind  confirmKind // what the confirmation screen is asking about
 	importPinned bool        // pinned-only toggle in the import picker
 	exit         bool        // signals the root model to quit (copy-and-exit)
-	width        int
-	height       int
+
+	// set when the screen was opened from the history list to file items into a
+	// section, rather than entered to browse
+	pickMode bool
+	pending  []string // values waiting to be filed
+	status   string   // message for the root model to show once it regains control
+
+	width  int
+	height int
 }
 
 func newSectionsModel(theme config.CustomTheme) sectionsModel {
@@ -183,9 +191,63 @@ func sectionItemListItems(sectionName string) []list.Item {
 	return items
 }
 
+// pickTargetItems lists the sections to file into, with a row for creating one
+// on the spot so an empty store is not a dead end.
+func pickTargetItems() []list.Item {
+	newRow := item{
+		title:           newSectionRow,
+		titleBase:       newSectionRow,
+		description:     "create a section and add to it",
+		descriptionBase: "create a section and add to it",
+		filePath:        "null",
+		isAction:        true,
+	}
+	return append([]list.Item{newRow}, sectionListItems()...)
+}
+
+// beginPick opens the screen in "file these values into a section" mode.
+func (m sectionsModel) beginPick(values []string) sectionsModel {
+	m.pickMode = true
+	m.pending = values
+	m.state = statePickTarget
+	m.status = ""
+	m = m.refresh()
+	m.list.Select(0)
+	return m
+}
+
+// filePending writes the pending values into the named section and reports what
+// happened, for the root model to show on the history list.
+func (m sectionsModel) filePending(sectionName string) sectionsModel {
+	var failed int
+	for _, v := range m.pending {
+		if err := config.AddSectionItem(sectionName, v); err != nil {
+			utils.LogERROR(fmt.Sprintf("failed to add item to section: %s", err))
+			failed++
+		}
+	}
+
+	added := len(m.pending) - failed
+	switch {
+	case failed > 0:
+		m.status = fmt.Sprintf("Failed to add %d item(s) to %s", failed, sectionName)
+	case added == 1:
+		m.status = "Added to " + sectionName + ": " + utils.Shorten(m.pending[0], config.ClipseConfig.MaxEntryLength)
+	default:
+		m.status = fmt.Sprintf("Added %d items to %s", added, sectionName)
+	}
+
+	m.pending = nil
+	m.pickMode = false
+	return m
+}
+
 // refresh reloads the current view from disk. Called on entry and after writes.
 func (m sectionsModel) refresh() sectionsModel {
 	switch m.state {
+	case statePickTarget:
+		m.list.Title = pickTargetTitle
+		m.list.SetItems(pickTargetItems())
 	case stateItemList:
 		m.list.Title = m.current
 		m.list.SetItems(sectionItemListItems(m.current))
@@ -226,6 +288,8 @@ func (m sectionsModel) Update(msg tea.Msg) (sectionsModel, tea.Cmd, bool) {
 			return m.updateConfirm(msg)
 		case stateImport:
 			return m.updateImport(msg)
+		case statePickTarget:
+			return m.updatePickTarget(msg)
 		case stateItemList:
 			return m.updateItemList(msg)
 		default:
@@ -306,6 +370,53 @@ func (m sectionsModel) updateSectionList(msg tea.KeyMsg) (sectionsModel, tea.Cmd
 		m.confirmList.Title = fmt.Sprintf("Delete section %q and its items?", i.titleFull)
 		m.confirmList.Select(0)
 		return m, nil, false
+	}
+
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	return m, cmd, false
+}
+
+// updatePickTarget handles the "which section should these go in?" screen, shown
+// when the user files items from the history list. Returning true hands control
+// back to the history screen, which is where the user came from.
+func (m sectionsModel) updatePickTarget(msg tea.KeyMsg) (sectionsModel, tea.Cmd, bool) {
+	if m.list.SettingFilter() {
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		return m, cmd, false
+	}
+
+	switch {
+	case key.Matches(msg, m.keys.back):
+		if m.list.IsFiltered() {
+			m.list.ResetFilter()
+			return m, nil, false
+		}
+		m.pending = nil
+		m.pickMode = false
+		m.status = ""
+		return m, nil, true // cancelled: straight back to the history list
+	}
+
+	i, ok := m.list.SelectedItem().(item)
+	if !ok {
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		return m, cmd, false
+	}
+
+	if key.Matches(msg, m.keys.choose) {
+		if i.isAction { // "+ New section": name it, then file into it
+			m.state = stateNameInput
+			m.input.Reset()
+			m.input.Placeholder = "e.g. Emails"
+			m.input.Focus()
+			return m, textinput.Blink, false
+		}
+
+		m = m.filePending(i.titleFull)
+		return m, nil, true // done: back to the history list
 	}
 
 	var cmd tea.Cmd
@@ -557,9 +668,14 @@ func (m sectionsModel) updateInput(msg tea.KeyMsg) (sectionsModel, tea.Cmd, bool
 
 	case tea.KeyEsc:
 		m.input.Blur()
-		if m.state == stateNameInput {
+		switch {
+		case m.pickMode:
+			// cancelling the name prompt returns to the section choice, not to
+			// the history list: the pending items are still waiting to be filed
+			m.state = statePickTarget
+		case m.state == stateNameInput:
 			m.state = stateSectionList
-		} else {
+		default:
 			m.state = stateItemList
 		}
 		m = m.refresh()
@@ -571,13 +687,28 @@ func (m sectionsModel) updateInput(msg tea.KeyMsg) (sectionsModel, tea.Cmd, bool
 
 		if m.state == stateNameInput {
 			if err := config.AddSection(value); err != nil {
+				if m.pickMode { // let the user correct a bad or duplicate name
+					m.state = statePickTarget
+					m = m.refresh()
+					return m, m.list.NewStatusMessage(statusMessageStyle(err.Error())), false
+				}
 				m.state = stateSectionList
 				m = m.refresh()
 				return m, m.list.NewStatusMessage(statusMessageStyle(err.Error())), false
 			}
 
+			name := strings.TrimSpace(value)
+
+			// created from the history list: file the pending items and go back
+			if m.pickMode {
+				m = m.filePending(name)
+				m.state = stateSectionList
+				m = m.refresh()
+				return m, nil, true
+			}
+
 			// drop straight into the new section
-			m.current = strings.TrimSpace(value)
+			m.current = name
 			m.state = stateItemList
 			m = m.refresh()
 			return m, m.list.NewStatusMessage(
@@ -655,6 +786,20 @@ func (m sectionsModel) View() string {
 		return render(m.importList.View() + "\n" + helpView([]key.Binding{
 			m.keys.choose, m.keys.selectSingle, m.keys.togglePinned, m.keys.back,
 		}))
+
+	case statePickTarget:
+		if m.list.SettingFilter() {
+			return render(m.list.View())
+		}
+		pick := key.NewBinding(
+			key.WithKeys(m.keys.choose.Keys()...),
+			key.WithHelp(getHelpChar(config.ClipseConfig.KeyBindings["choose"]), "add to section"),
+		)
+		cancel := key.NewBinding(
+			key.WithKeys(m.keys.back.Keys()...),
+			key.WithHelp(getHelpChar(config.ClipseConfig.KeyBindings["quit"]), "cancel"),
+		)
+		return render(m.list.View() + "\n" + helpView([]key.Binding{pick, cancel}))
 
 	case stateItemList:
 		if m.list.SettingFilter() {

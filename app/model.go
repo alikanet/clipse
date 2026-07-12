@@ -56,6 +56,7 @@ type item struct {
 	filePath        string // "path/to/file" | "null"
 	pinned          bool   // pinned status
 	selected        bool   // selected status
+	isAction        bool   // synthetic row that performs an action, not a data row
 }
 
 type SelectedItem struct {
@@ -122,6 +123,7 @@ func NewModel() Model {
 			listKeys.selectSingle,
 			listKeys.clearSelected,
 			listKeys.sections,
+			listKeys.addToSection,
 			listKeys.quit,
 			listKeys.forceQuit,
 		}

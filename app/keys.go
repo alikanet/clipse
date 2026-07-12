@@ -30,6 +30,7 @@ type keyMap struct {
 	home          key.Binding
 	end           key.Binding
 	sections      key.Binding
+	addToSection  key.Binding
 }
 
 var charSub = map[string]string{
@@ -140,6 +141,10 @@ func newKeyMap(config map[string]string) *keyMap {
 		sections: key.NewBinding(
 			key.WithKeys(parseKeys(config["sections"])...),
 			key.WithHelp(getHelpChar(config["sections"]), "sections"),
+		),
+		addToSection: key.NewBinding(
+			key.WithKeys(parseKeys(config["addToSection"])...),
+			key.WithHelp(getHelpChar(config["addToSection"]), "add to section"),
 		),
 	}
 }

@@ -46,6 +46,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if back {
 			m.screen = screenHistory
+			m.resetSelected() // the filed items are no longer pending
+
+			if m.sections.status != "" { // e.g. "Added 3 items to Emails"
+				status := m.sections.status
+				m.sections.status = ""
+				return m, m.list.NewStatusMessage(statusMessageStyle(status))
+			}
 		}
 
 		return m, cmd
@@ -160,6 +167,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break // don't jump screens out of a modal state
 			}
 			return m.openSections()
+
+		case key.Matches(msg, m.keys.addToSection):
+			if m.showConfirmation || m.showPreview {
+				break
+			}
+
+			values := m.sectionCandidates(i)
+			if len(values) == 0 {
+				cmds = append(cmds, m.list.NewStatusMessage(
+					statusMessageStyle("Sections hold text only"),
+				))
+				break
+			}
+
+			m.list.ResetFilter()
+			m.screen = screenSections
+			m.sections = m.sections.beginPick(values)
+			return m, nil
 
 		case key.Matches(msg, m.keys.choose):
 			if m.showConfirmation {
@@ -464,6 +489,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 /*
 	HELPER FUNCS
 */
+
+// sectionCandidates returns the history values to file into a section: every
+// multi-selected entry, or the highlighted one when nothing is explicitly
+// selected. Image entries are skipped, since sections hold text only.
+func (m *Model) sectionCandidates(cursor item) []string {
+	values := []string{}
+
+	for _, li := range m.list.Items() {
+		it, ok := li.(item)
+		if !ok || !it.selected || it.filePath != "null" {
+			continue
+		}
+		values = append(values, it.titleFull)
+	}
+
+	if len(values) == 0 && cursor.filePath == "null" {
+		values = append(values, cursor.titleFull)
+	}
+
+	return values
+}
 
 // openSections switches to the sections screen. The history list's filter is
 // reset first, so returning later does not land on a filtered view the user has
