@@ -35,6 +35,14 @@ const (
 	stateConfirmDelete                      // confirming a section deletion
 )
 
+// what the confirmation screen is currently asking about
+type confirmKind int
+
+const (
+	confirmSection confirmKind = iota
+	confirmItem
+)
+
 type sectionsKeyMap struct {
 	add          key.Binding
 	remove       key.Binding
@@ -91,9 +99,10 @@ type sectionsModel struct {
 	input        textinput.Model
 	keys         *sectionsKeyMap
 	theme        config.CustomTheme
-	current      string // section currently open, when in stateItemList
-	importPinned bool   // pinned-only toggle in the import picker
-	exit         bool   // signals the root model to quit (copy-and-exit)
+	current      string      // section currently open, when in stateItemList
+	confirmKind  confirmKind // what the confirmation screen is asking about
+	importPinned bool        // pinned-only toggle in the import picker
+	exit         bool        // signals the root model to quit (copy-and-exit)
 	width        int
 	height       int
 }
@@ -293,6 +302,7 @@ func (m sectionsModel) updateSectionList(msg tea.KeyMsg) (sectionsModel, tea.Cmd
 	case key.Matches(msg, m.keys.remove):
 		// deleting a section takes its items with it, so confirm first
 		m.state = stateConfirmDelete
+		m.confirmKind = confirmSection
 		m.confirmList.Title = fmt.Sprintf("Delete section %q and its items?", i.titleFull)
 		m.confirmList.Select(0)
 		return m, nil, false
@@ -365,11 +375,12 @@ func (m sectionsModel) updateItemList(msg tea.KeyMsg) (sectionsModel, tea.Cmd, b
 		), false
 
 	case key.Matches(msg, m.keys.remove):
-		if err := config.DeleteSectionItems(m.current, []string{i.timeStamp}); err != nil {
-			return m, m.list.NewStatusMessage(statusMessageStyle(err.Error())), false
-		}
-		m = m.refresh()
-		return m, m.list.NewStatusMessage(statusMessageStyle("Deleted: " + i.title)), false
+		// a saved item was put here deliberately, so confirm before removing it
+		m.state = stateConfirmDelete
+		m.confirmKind = confirmItem
+		m.confirmList.Title = fmt.Sprintf("Delete %q?", i.title)
+		m.confirmList.Select(0)
+		return m, nil, false
 	}
 
 	var cmd tea.Cmd
@@ -490,22 +501,40 @@ func (m sectionsModel) importSelection(cursor item) []string {
 }
 
 func (m sectionsModel) updateConfirm(msg tea.KeyMsg) (sectionsModel, tea.Cmd, bool) {
+	// the screen behind the confirmation, returned to either way
+	previous := stateSectionList
+	if m.confirmKind == confirmItem {
+		previous = stateItemList
+	}
+
 	switch {
 	case key.Matches(msg, m.keys.back):
-		m.state = stateSectionList
+		m.state = previous
 		return m, nil, false
 
 	case key.Matches(msg, m.keys.choose):
 		confirmed := m.confirmList.Index() == 1 // 0 = No, 1 = Yes
-		m.state = stateSectionList
+		m.state = previous
 
 		if !confirmed {
 			return m, nil, false
 		}
 
+		// the list behind the confirmation is untouched, so the highlighted row
+		// is still the one the user pressed delete on
 		i, ok := m.list.SelectedItem().(item)
 		if !ok {
 			return m, nil, false
+		}
+
+		if m.confirmKind == confirmItem {
+			if err := config.DeleteSectionItems(m.current, []string{i.timeStamp}); err != nil {
+				return m, m.list.NewStatusMessage(statusMessageStyle(err.Error())), false
+			}
+			m = m.refresh()
+			return m, m.list.NewStatusMessage(
+				statusMessageStyle("Deleted: " + i.title),
+			), false
 		}
 
 		if err := config.DeleteSection(i.titleFull); err != nil {
@@ -609,8 +638,14 @@ func (m sectionsModel) View() string {
 		))
 
 	case stateConfirmDelete:
+		// the `choose` binding reads "open" everywhere else, which is meaningless
+		// on a yes/no prompt
+		confirmChoose := key.NewBinding(
+			key.WithKeys(m.keys.choose.Keys()...),
+			key.WithHelp(getHelpChar(config.ClipseConfig.KeyBindings["choose"]), "confirm"),
+		)
 		return render(m.confirmList.View() + "\n" + helpView([]key.Binding{
-			m.keys.choose, m.keys.back,
+			confirmChoose, m.keys.back,
 		}))
 
 	case stateImport:
